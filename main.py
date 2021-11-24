@@ -19,6 +19,16 @@ import model_config
 
 import math
 
+import cv2
+
+
+class Sigmoid_Xent_with_Logit(tf.keras.losses.Loss):
+
+    def call(self, y_true, y_pred):
+        loss = tf.nn.sigmoid_cross_entropy_with_logits(y_true, y_pred)
+        loss = tf.reduce_sum(loss, axis = [1,2,3])
+        return tf.reduce_mean(loss)
+
 class With_SAM_Model(tf.keras.Model):
     def __init__(self, inputs, outputs , dual_vector, rho, gradient_clipping, no_weight_decay_on_bn = False, l2_reg = 0):
         super(With_SAM_Model, self).__init__(inputs,outputs)
@@ -204,17 +214,18 @@ if __name__ == "__main__":
     model_input = tf.keras.Input(shape=one_train_data["image"].shape[1:],name="image",dtype=tf.float32)
 
     logit = vit_model(model_input)
+    logit = (logit+1)/2
 
     
     # logit = sam_model(model_input)
 
-    prob = tf.keras.layers.Softmax(axis = -1, name = "label")(logit)
+    # prob = tf.keras.layers.Softmax(axis = -1, name = "label")(logit)
 
     # model = tf.keras.Model(inputs = [model_input],outputs = [logit], name = "ViT_model")
 
     sam_model_config = model_config.get_sam_config()
 
-    sam_model = With_SAM_Model(inputs = [model_input],outputs = [prob], dual_vector = dual_vector, rho = sam_model_config.rho,\
+    sam_model = With_SAM_Model(inputs ={"image":model_input},outputs = {"recon":logit}, dual_vector = dual_vector, rho = sam_model_config.rho,\
         gradient_clipping = sam_model_config.gradient_clipping, l2_reg = sam_model_config.weight_decay)
 
     model = sam_model
@@ -245,6 +256,7 @@ if __name__ == "__main__":
 
     callback_list = [tensorboard_callback,save_model_callback]
 
+    sigmoid_xent = Sigmoid_Xent_with_Logit()
 
     # lr_schedule = tf.keras.optimizers.schedules.ExponentialDecay(initial_learning_rate = 1e-2, decay_steps = 1000, decay_rate = 0.01, staircase=False, name=None)
     # lr_schedule = Cosine_Decay_with_Warm_up(base_lr, total_steps, warmup_steps)
@@ -252,10 +264,16 @@ if __name__ == "__main__":
     lr_schedule = Warmup_Cos_Decay_Schedule(base_lr, warmup_steps = warmup_steps, cos_decay_steps = steps_per_epoch*epochs)
 
 
+    # model.compile(
+    #     optimizer=tf.keras.optimizers.Adam(learning_rate = base_lr), 
+    #     loss={"label":tf.keras.losses.CategoricalCrossentropy(from_logits=False)},
+    #     metrics={'label': 'accuracy'}
+    #     )
+    
     model.compile(
         optimizer=tf.keras.optimizers.Adam(learning_rate = base_lr), 
-        loss={"label":tf.keras.losses.CategoricalCrossentropy(from_logits=False)},
-        metrics={'label': 'accuracy'}
+        loss={"recon":sigmoid_xent},
+        metrics = {"recon":tf.keras.metrics.BinaryCrossentropy(from_logits = True)}
         )
 
     # print(model.summary())
@@ -273,3 +291,16 @@ if __name__ == "__main__":
                 validation_steps=3,callbacks = callback_list).history
 
 
+
+    one_val_data = next(ds_val.as_numpy_iterator())[0] # (256, 224, 224, 3)
+
+    logits = model(one_val_data["image"])
+    logits = tf.keras.activations.sigmoid(logits).numpy() # (256, 224, 224, 3)
+    logits = logits[:10] #(10, 224, 224, 3)
+
+    test_recon =one_val_data["recon"][:10] # #(10, 224, 224, 3)
+    inference_img = np.concatenate([test_recon,test_x_0], axis = 2)  #(10, 224, 224*2, 3)
+    inference_img = inference_img.reshape([10*224, 224*2, 3])
+    # print(inference_img.shape)
+
+    cv2.imwrite("inference_img.png", inference_img)

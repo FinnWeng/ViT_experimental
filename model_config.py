@@ -16,9 +16,10 @@ def get_b16_config():
     config.transformer.num_layers = 8
     config.transformer.attention_dropout_rate = 0.0
     config.transformer.dropout_rate = 0.0
-    config.classifier = 'token'
-    # config.representation_size = None
-    config.representation_size = [2048, 1024]
+    # config.classifier = 'token'
+    config.classifier = 'None'
+    config.representation_size = None
+    # config.representation_size = [2048, 1024]
     return config
 
 

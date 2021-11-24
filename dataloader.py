@@ -238,11 +238,14 @@ def get_data(
                 im = tf.image.flip_left_right(im)
         else:
             im = tf.image.resize(im, [image_size, image_size])
-        im = (im - 127.5) / 127.5
+        # recon_y = im/255 # 0~1
+        # im = (im - 127.5) / 127.5
+        im = im/255
         label = tf.one_hot(
             data["label"], num_classes
         )  # pylint: disable=no-value-for-parameter
-        return {"image": im}, {"label": label}
+        
+        return {"image": im}, {"recon":im}
 
     data = data.repeat(repeats)
     if mode == "train":

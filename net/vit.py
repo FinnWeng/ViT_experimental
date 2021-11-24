@@ -32,6 +32,7 @@ class Graph_Convolution(tf.keras.Model):
         if self.use_bias:
             x += self.gcn_b
 
+        return x
         
 
  
@@ -225,7 +226,13 @@ class Encoder(tf.keras.Model):
                     ) for lyr in range(self.num_layers) ]
         self.ln1 = tf.keras.layers.LayerNormalization(axis = [1,2],epsilon=1e-06,) # axis igonores 0, and we make sure the rank is 3.
 
-        self.gcn1 = Graph_Convolution(10,use_bias = False, name = "gcn1")
+        '''
+        nodes: 196 => 64 => 32 => 8
+        '''
+
+        self.gcn1 = Graph_Convolution(64,use_bias = False, name = "gcn1")
+        self.gcn2 = Graph_Convolution(32,use_bias = False, name = "gcn2")
+        self.gcn3 = Graph_Convolution(8,use_bias = False, name = "gcn3")
 
     def get(self, name, ctor, *args, **kwargs):
         # Create or get layer by name to avoid mentioning it in the constructor.
@@ -247,6 +254,20 @@ class Encoder(tf.keras.Model):
         return tf.matmul(tf.transpose(tf.matmul(adj,d_mat_inv_sqrt), [1,0]), d_mat_inv_sqrt) 
 
 
+    def diff_pool(self, input, gcn, adj):
+        s_transform = gcn(input, adj) # (batch, old_clusters, max_clusters)
+        s_transform = tf.keras.activations.softmax(s_transform, axis=2) #  # (batch, old_clusters, max_clusters)
+        coarse_x = tf.matmul(s_transform, input, transpose_a=True)
+        # print("coarse_x1:", coarse_x1.shape) # (batch, dim, old_clusters) *  (batch, old_clusters, max_clusters) =  (batch, max_clusters, dim)
+
+        tmp_as = tf.matmul(adj, s_transform)
+        # print("tmp_as:", tmp_as.shape) # (batch, old_clusters, max_clusters)
+        new_adj = tf.matmul(s_transform, tmp_as, transpose_a=True)
+        # print("new_adj:", new_adj.shape) # (batch, max_clusters, max_clusters)
+
+        return coarse_x, new_adj
+
+
 
     def call(self, inputs, train):
         """Applies Transformer model on the inputs.
@@ -257,6 +278,12 @@ class Encoder(tf.keras.Model):
 
         Returns:
         output of a transformer encoder.
+
+
+        num_layers: 8
+        encoder: 1,2,4
+        decoder: 1
+
         """
         assert len(inputs.shape) == 3  # (batch, len, emb)
 
@@ -270,24 +297,38 @@ class Encoder(tf.keras.Model):
         # x = inputs + self.get("posembed_input",tf.Variable, lambda:tf.keras.initializers.RandomNormal(stddev=0.02)(shape = inputs.shape),trainable=True)
         x = self.drop1(x, train)
 
-        # Input Encoder
-        x = self.e_1d_blocks[0](x, deterministic=not train)
-
-        # import pdb
-        # pdb.set_trace()
-
         this_pe = self.weights[-1][0] # for get rid of batch dim
         normalized_pe = tf.math.l2_normalize(this_pe, -1)
         raw_adj = tf.linalg.matmul(this_pe, tf.transpose(this_pe,[1,0]))
         raw_adj = tf.math.abs(raw_adj) # |cos theta of vectors|
-
         normalized_adj = self.normalizing_adj(raw_adj)
 
-        pool1 = self.gcn1(x, normalized_adj)
-        
+        '''
+        encoder
+        '''
+        print("x.shape:", x.shape)
+        x = self.e_1d_blocks[0](x, deterministic=not train)
+        x = self.e_1d_blocks[1](x, deterministic=not train)
+        print("x.shape:", x.shape)
+        x, new_adj1 = self.diff_pool(x, self.gcn1, normalized_adj)
+        print("x.shape:", x.shape)
+        x = self.e_1d_blocks[2](x, deterministic=not train)
+        x = self.e_1d_blocks[3](x, deterministic=not train)
+        print("x.shape:", x.shape)
+        x, new_adj2 = self.diff_pool(x, self.gcn2, new_adj1)
+        print("x.shape:", x.shape)
+        x = self.e_1d_blocks[4](x, deterministic=not train)
+        x = self.e_1d_blocks[5](x, deterministic=not train)
+        print("x.shape:", x.shape)
+        x, new_adj3 = self.diff_pool(x, self.gcn3, new_adj2)
+        print("x.shape:", x.shape)
+        x = self.e_1d_blocks[6](x, deterministic=not train)
+        print("x.shape:", x.shape)
 
-        for e_lyr in self.e_1d_blocks[1:]:
-            x = e_lyr(x, deterministic=not train)
+        '''
+        decoder
+        '''
+        x = self.e_1d_blocks[7](x, deterministic=not train)
         encoded = self.ln1(x) ## need to check x rank!!!!
 
         return encoded
@@ -320,9 +361,15 @@ class ViT(tf.keras.Model):
 
         self.cls = tf.Variable(cls_init,trainable = True,name = "cls")
 
+        # self.head = tf.keras.layers.Dense(
+        #     self.num_classes, kernel_initializer=tf.keras.initializers.LecunNormal(), name = "head")
+
+        self.flat1 = tf.keras.layers.Flatten()
         self.head = tf.keras.layers.Dense(
-            self.num_classes, kernel_initializer=tf.keras.initializers.LecunNormal(), name = "head")
+            112*112*3, kernel_initializer=tf.keras.initializers.LecunNormal(), name = "head")
     
+        self.up1 = tf.keras.layers.UpSampling2D(size = [2,2])
+
     def get(self, name, ctor, *args, **kwargs):
         # Create or get layer by name to avoid mentioning it in the constructor.
         if not hasattr(self, "_modules"):
@@ -400,7 +447,7 @@ class ViT(tf.keras.Model):
         elif self.classifier == 'gap':
             x = tf.reduce_mean(x, axis=list(range(1, len(x.shape) - 1)))  # (1,) or (1,2)
         else:
-            raise ValueError(f'Invalid classifier={self.classifier}')
+            x = self.flat1(x)
 
         if self.representation_size is not None:
             x = self.get("pre_logits",tf.keras.layers.Dense, 
@@ -420,6 +467,9 @@ class ViT(tf.keras.Model):
         #     self.num_classes, kernel_initializer=tf.keras.initializers.LecunNormal())(x) 
 
         logit = self.head(x)
+        logit = tf.reshape(logit, [-1, 112, 112, 3])
+        logit = self.up1(logit)
+
         return logit
         # prob = self.get("label",tf.keras.layers.Dense, 
         #     self.num_classes, kernel_initializer=tf.keras.initializers.LecunNormal(),activation = "softmax")(x) 
