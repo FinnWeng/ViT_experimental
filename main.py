@@ -20,6 +20,7 @@ import model_config
 import math
 
 import cv2
+import numpy as np
 
 
 class Sigmoid_Xent_with_Logit(tf.keras.losses.Loss):
@@ -245,7 +246,7 @@ if __name__ == "__main__":
     total_steps = 100
     warmup_steps = 1000
     base_lr = 1e-3
-    epochs = 200
+    epochs = 1000
 
     # define callback 
     tensorboard_callback = tf.keras.callbacks.TensorBoard(log_dir=log_dir, histogram_freq=10, update_freq= 10)
@@ -284,23 +285,30 @@ if __name__ == "__main__":
     # import pdb
     # pdb.set_trace()
 
+    model.load_weights('./model/ViT.ckpt')
+
     hist = model.fit(ds_train,
                 epochs=epochs, 
                 steps_per_epoch=steps_per_epoch,
                 validation_data = ds_val,
-                validation_steps=3,callbacks = callback_list).history
+                validation_steps=1,callbacks = callback_list).history
 
 
 
-    one_val_data = next(ds_val.as_numpy_iterator())[0] # (256, 224, 224, 3)
+    one_val_data = next(ds_val.as_numpy_iterator()) # (256, 224, 224, 3)
 
-    logits = model(one_val_data["image"])
-    logits = tf.keras.activations.sigmoid(logits).numpy() # (256, 224, 224, 3)
-    logits = logits[:10] #(10, 224, 224, 3)
+    logits = model(one_val_data[0]["image"])["recon"]
+    logits = tf.keras.activations.sigmoid(logits).numpy() # (8, 224, 224, 3)
+    print("logts:",logits.shape)
 
-    test_recon =one_val_data["recon"][:10] # #(10, 224, 224, 3)
-    inference_img = np.concatenate([test_recon,test_x_0], axis = 2)  #(10, 224, 224*2, 3)
-    inference_img = inference_img.reshape([10*224, 224*2, 3])
+    print("logts:",logits.shape)
+
+
+
+    test_recon =one_val_data[1]["recon"] # #(8, 224, 224, 3)
+    print("test_recon:", test_recon.shape)
+    inference_img = np.concatenate([test_recon,logits], axis = 2)  #(10, 224, 224*2, 3)
+    inference_img = inference_img.reshape([8*224, 224*2, 3])*255
     # print(inference_img.shape)
 
     cv2.imwrite("inference_img.png", inference_img)

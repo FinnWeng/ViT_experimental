@@ -5,4 +5,5 @@ tf_log
 *.json
 model
 test_cosine_decay.py
-
+arxiv
+*.png
