@@ -183,13 +183,21 @@ if __name__ == "__main__":
     print("one_train_data.shape:", one_train_data["image"].shape) # vit_model_config 
     print(one_train_data["image"].shape[1:])
 
+    mode = "origin"
 
-    # initialize model
-    # vit_model_config = model_config.get_b32_config()
-    vit_model_config = model_config.get_b16_config()
+    if mode == "origin":
+        vit_model_config = model_config.get_origin_b16_config()
+    else:
+        vit_model_config = model_config.get_b16_config()
+
+
+
+    # initialize model    
+
+    
     print(vit_model_config )
     
-    vit_model = ViT(num_classes=ds_train_num_classes, **vit_model_config)
+    vit_model = ViT(num_classes=ds_train_num_classes, mode = mode, **vit_model_config)
 
     
 
@@ -246,7 +254,7 @@ if __name__ == "__main__":
     total_steps = 100
     warmup_steps = 1000
     base_lr = 1e-3
-    epochs = 1000
+    epochs = 100
 
     # define callback 
     tensorboard_callback = tf.keras.callbacks.TensorBoard(log_dir=log_dir, histogram_freq=10, update_freq= 10)
@@ -285,7 +293,7 @@ if __name__ == "__main__":
     # import pdb
     # pdb.set_trace()
 
-    model.load_weights('./model/ViT.ckpt')
+    # model.load_weights('./model/ViT.ckpt')
 
     hist = model.fit(ds_train,
                 epochs=epochs, 

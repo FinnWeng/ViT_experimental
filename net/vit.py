@@ -333,6 +333,77 @@ class Encoder(tf.keras.Model):
 
         return encoded
 
+
+
+class Classical_Encoder(tf.keras.Model):
+    """Transformer Model Encoder for sequence to sequence translation.
+
+    Attributes:
+        num_layers: number of layers
+        mlp_dim: dimension of the mlp on top of attention block
+        num_heads: Number of heads in nn.MultiHeadDotProductAttention
+        dropout_rate: dropout rate.
+        attention_dropout_rate: dropout rate in self attention.
+    """
+
+    # num_layers: int
+    # mlp_dim: int
+    # num_heads: int
+    # dropout_rate: float = 0.1
+    # attention_dropout_rate: float = 0.1
+
+    def __init__(self, num_layers, mlp_dim,num_heads, dropout_rate = 0.1, attention_dropout_rate = 0.1, name = None):
+        super(Classical_Encoder, self).__init__(name)
+        self.num_layers = num_layers
+        self.mlp_dim = mlp_dim
+        self.num_heads = num_heads
+        self.dropout_rate = dropout_rate
+        self.attention_dropout_rate = attention_dropout_rate
+
+
+        self.drop1 = tf.keras.layers.Dropout(self.dropout_rate)
+
+        self.e_1d_blocks = [Encoder_1D_Block(mlp_dim=self.mlp_dim, 
+                    num_heads=self.num_heads, dropout_rate=self.dropout_rate,
+                    attention_dropout_rate=self.attention_dropout_rate,name = f'encoderblock_{lyr}',
+                    ) for lyr in range(self.num_layers) ]
+        self.ln1 = tf.keras.layers.LayerNormalization(axis = [1,2],epsilon=1e-06,) # axis igonores 0, and we make sure the rank is 3.
+
+    def get(self, name, ctor, *args, **kwargs):
+        # Create or get layer by name to avoid mentioning it in the constructor.
+        if not hasattr(self, "_modules"):
+            self._modules = {}
+        if name not in self._modules:
+            self._modules[name] = ctor(*args, **kwargs)
+        return self._modules[name]
+
+
+    def call(self, inputs, train):
+        """Applies Transformer model on the inputs.
+
+        Args:
+        inputs: Inputs to the layer.
+        train: Set to `True` when training.
+
+        Returns:
+        output of a transformer encoder.
+        """
+        assert len(inputs.shape) == 3  # (batch, len, emb)
+
+
+  
+        # x = self.add_pe(inputs)
+        x = self.get("add_pe", Add_Position_Embs, inputs.shape)(inputs)
+        # x = inputs + self.get("posembed_input",tf.Variable, lambda:tf.keras.initializers.RandomNormal(stddev=0.02)(shape = inputs.shape),trainable=True)
+        x = self.drop1(x, train)
+
+        # Input Encoder
+        for e_lyr in self.e_1d_blocks:
+            x = e_lyr(x, deterministic=not train)
+        encoded = self.ln1(x) ## need to check x rank!!!!
+
+        return encoded
+
 class ViT(tf.keras.Model):
     """VisionTransformer."""
 
@@ -345,9 +416,10 @@ class ViT(tf.keras.Model):
     # representation_size: Optional[int] = None
     # classifier: str = 'token'
 
-    def __init__(self, num_classes, patches, transformer, hidden_size, resnet = None, representation_size = None, classifier = "token", name = "VIT"):
+    def __init__(self, num_classes, mode , patches, transformer, hidden_size, resnet = None, representation_size = None, classifier = "token", name = "VIT"):
         super(ViT, self).__init__(name = name)
         self.num_classes = num_classes
+        self.mode = mode
         self.patches = patches
         self.transformer = transformer
         self.hidden_size =  hidden_size
@@ -370,6 +442,8 @@ class ViT(tf.keras.Model):
     
         self.up1 = tf.keras.layers.UpSampling2D(size = [2,2])
 
+        self.origin_transform = tf.keras.layers.Dense(1024)
+
     def get(self, name, ctor, *args, **kwargs):
         # Create or get layer by name to avoid mentioning it in the constructor.
         if not hasattr(self, "_modules"):
@@ -384,35 +458,6 @@ class ViT(tf.keras.Model):
 
         x = inputs
         # (Possibly partial) ResNet root.
-        if self.resnet is not None:
-            width = int(64 * self.resnet.width_factor)
-
-            # Root block.
-            x = self.get("conv_root",resnet_layer.Std_Conv, self.features, (7,7), (2,2), 
-                padding = "same",use_bias = False, kernel_initializer = tf.keras.initializers.LecunNormal())(x)
-
-            x = self.get('gn_root', tfa.layers.GroupNormalization, epsilon = 1e-6)(x)
-            x = tf.nn.relu(x)
-
-            
-            x = tf.nn.max_pool2d(x, pool_size=(3, 3),strides=(2, 2), padding='same')
-
-
-            # ResNet stages.
-            if self.resnet.num_layers:
-                x = resnet_layer.Res_Net_Stage(
-                    block_size=self.resnet.num_layers[0],
-                    nout=width,
-                    first_stride=(1, 1),
-                    name='block1')(
-                        x)
-                for i, block_size in enumerate(self.resnet.num_layers[1:], 1):
-                    x = resnet_layer.Res_Net_Stage(
-                        block_size=block_size,
-                        nout=width * 2**i,
-                        first_stride=(2, 2),
-                        name=f'block{i + 1}')(
-                            x)
 
         n, h, w, c = x.shape
 
@@ -440,14 +485,30 @@ class ViT(tf.keras.Model):
             # print("x.shape:", x.shape) # (2, 144, 32)
             x = tf.concat([cls, x], axis=1)
 
-        x = self.get('Transformer',Encoder, **self.transformer)(x, train=train)
+        if self.mode == "origin":
+            x = self.get('Transformer',Classical_Encoder, **self.transformer)(x, train=train)
+
+        else:
+            x = self.get('Transformer',Encoder, **self.transformer)(x, train=train)
         
+
+
+
         if self.classifier == 'token':
             x = x[:, 0]
         elif self.classifier == 'gap':
             x = tf.reduce_mean(x, axis=list(range(1, len(x.shape) - 1)))  # (1,) or (1,2)
         else:
             x = self.flat1(x)
+            print("flat_x:", x.shape)
+            '''
+            origin: (256, 12544)
+            pooling: (256, 1024)
+            '''
+
+
+        if self.mode == "origin":
+            x = self.origin_transform(x)
 
         if self.representation_size is not None:
             x = self.get("pre_logits",tf.keras.layers.Dense, 
