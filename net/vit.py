@@ -436,11 +436,11 @@ class ViT(tf.keras.Model):
         self.cls = tf.Variable(cls_init,trainable = True,name = "cls")
 
         self.cls_head = tf.keras.layers.Dense(
-            self.num_classes, kernel_initializer=tf.keras.initializers.LecunNormal(), name = "cls_head")
+            self.num_classes, kernel_initializer=tf.keras.initializers.LecunNormal(), name = "cls")
 
         self.flat1 = tf.keras.layers.Flatten()
         self.recon_head = tf.keras.layers.Dense(
-            112*112*3, kernel_initializer=tf.keras.initializers.LecunNormal(), name = "recon_head")
+            112*112*3, kernel_initializer=tf.keras.initializers.LecunNormal(), name = "recon")
     
         self.up1 = tf.keras.layers.UpSampling2D(size = [2,2])
 
@@ -477,7 +477,7 @@ class ViT(tf.keras.Model):
         x = tf.reshape(x, [-1, h * w, c])
 
         # If we want to add a class token, add it here.
-        if self.classifier == 'token':
+        if self.classifier == 'token' or self.classifier == "token_and_recon":
             cls = self.cls
             # cls = tf.tile(cls,[1, 1, 1])
             inter_cls = tf.zeros_like(x[:,0:1,:]) # (b, 1, 32)
@@ -486,6 +486,7 @@ class ViT(tf.keras.Model):
             # print("cls_tile:",cls.shape) # (b, 1, 32)
             # print("x.shape:", x.shape) # (2, 144, 32)
             x = tf.concat([cls, x], axis=1)
+        
 
         if self.mode == "origin":
             x = self.get('Transformer',Classical_Encoder, **self.transformer)(x, train=train)
@@ -508,7 +509,7 @@ class ViT(tf.keras.Model):
             '''
         elif self.classifier == "token_and_recon":
             cls_x = x[:, 0]
-            recon_x = self.flat1(x)
+            recon_x = self.flat1(x[:, 1:])
             '''
             origin: (256, 12544)
             pooling: (256, 1024)

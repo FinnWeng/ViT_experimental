@@ -255,7 +255,7 @@ if __name__ == "__main__":
 
     callback_list = [tensorboard_callback,save_model_callback]
 
-    sigmoid_xent = Sigmoid_Xent_with_Logit()
+    sigmoid_xent = Sigmoid_Xent_with_Logit(name = "sigmoid_xent")
 
     # lr_schedule = tf.keras.optimizers.schedules.ExponentialDecay(initial_learning_rate = 1e-2, decay_steps = 1000, decay_rate = 0.01, staircase=False, name=None)
     # lr_schedule = Cosine_Decay_with_Warm_up(base_lr, total_steps, warmup_steps)
