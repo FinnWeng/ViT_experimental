@@ -228,11 +228,13 @@ class Encoder(tf.keras.Model):
 
         '''
         nodes: 196 => 64 => 32 => 8
+        if cls, contains one cls token
         '''
 
         self.gcn1 = Graph_Convolution(64,use_bias = False, name = "gcn1")
         self.gcn2 = Graph_Convolution(32,use_bias = False, name = "gcn2")
         self.gcn3 = Graph_Convolution(8,use_bias = False, name = "gcn3")
+        
 
     def get(self, name, ctor, *args, **kwargs):
         # Create or get layer by name to avoid mentioning it in the constructor.
@@ -416,7 +418,7 @@ class ViT(tf.keras.Model):
     # representation_size: Optional[int] = None
     # classifier: str = 'token'
 
-    def __init__(self, num_classes, mode , patches, transformer, hidden_size, resnet = None, representation_size = None, classifier = "token", name = "VIT"):
+    def __init__(self, num_classes, mode, patches, transformer, hidden_size, resnet = None, representation_size = None, classifier = "token", name = "VIT"):
         super(ViT, self).__init__(name = name)
         self.num_classes = num_classes
         self.mode = mode
@@ -433,12 +435,12 @@ class ViT(tf.keras.Model):
 
         self.cls = tf.Variable(cls_init,trainable = True,name = "cls")
 
-        # self.head = tf.keras.layers.Dense(
-        #     self.num_classes, kernel_initializer=tf.keras.initializers.LecunNormal(), name = "head")
+        self.cls_head = tf.keras.layers.Dense(
+            self.num_classes, kernel_initializer=tf.keras.initializers.LecunNormal(), name = "cls_head")
 
         self.flat1 = tf.keras.layers.Flatten()
-        self.head = tf.keras.layers.Dense(
-            112*112*3, kernel_initializer=tf.keras.initializers.LecunNormal(), name = "head")
+        self.recon_head = tf.keras.layers.Dense(
+            112*112*3, kernel_initializer=tf.keras.initializers.LecunNormal(), name = "recon_head")
     
         self.up1 = tf.keras.layers.UpSampling2D(size = [2,2])
 
@@ -495,29 +497,38 @@ class ViT(tf.keras.Model):
 
 
         if self.classifier == 'token':
-            x = x[:, 0]
+            cls_x = x[:, 0]
         elif self.classifier == 'gap':
-            x = tf.reduce_mean(x, axis=list(range(1, len(x.shape) - 1)))  # (1,) or (1,2)
-        else:
-            x = self.flat1(x)
-            print("flat_x:", x.shape)
+            cls_x = tf.reduce_mean(x, axis=list(range(1, len(x.shape) - 1)))  # (1,) or (1,2)
+        elif self.classifier == "recon":
+            recon_x = self.flat1(x)
             '''
             origin: (256, 12544)
             pooling: (256, 1024)
             '''
+        elif self.classifier == "token_and_recon":
+            cls_x = x[:, 0]
+            recon_x = self.flat1(x)
+            '''
+            origin: (256, 12544)
+            pooling: (256, 1024)
+            '''
+        else:
+            raise Exception("self.classifier not in list!!")
+
 
 
         if self.mode == "origin":
-            x = self.origin_transform(x)
+            recon_x = self.origin_transform(recon_x)
 
         if self.representation_size is not None:
-            x = self.get("pre_logits",tf.keras.layers.Dense, 
+            cls_x = self.get("pre_logits",tf.keras.layers.Dense, 
                 self.representation_size[0],kernel_initializer=tf.keras.initializers.LecunNormal(),
-                )(x)
+                )(cls_x)
             # x = tf.keras.activations.gelu(x,approximate = True)
-            x = self.get("pre_logits2",tf.keras.layers.Dense, 
+            cls_x = self.get("pre_logits2",tf.keras.layers.Dense, 
                 self.representation_size[1],kernel_initializer=tf.keras.initializers.LecunNormal(),
-                )(x)
+                )(cls_x)
         # else:
         #     x = IdentityLayer(name='pre_logits')(x)
 
@@ -527,11 +538,18 @@ class ViT(tf.keras.Model):
         # logit = self.get("head",tf.keras.layers.Dense, 
         #     self.num_classes, kernel_initializer=tf.keras.initializers.LecunNormal())(x) 
 
-        logit = self.head(x)
-        logit = tf.reshape(logit, [-1, 112, 112, 3])
-        logit = self.up1(logit)
+        if self.classifier == "token_and_recon":
 
-        return logit
+            cls_logit = self.cls_head(cls_x)
+
+            recon_logit = self.recon_head(recon_x)
+            recon_logit = tf.reshape(recon_logit, [-1, 112, 112, 3])
+            recon_logit = self.up1(recon_logit)
+
+            return cls_logit, recon_logit 
+        
+        else:
+            return recon_logit
         # prob = self.get("label",tf.keras.layers.Dense, 
         #     self.num_classes, kernel_initializer=tf.keras.initializers.LecunNormal(),activation = "softmax")(x) 
                

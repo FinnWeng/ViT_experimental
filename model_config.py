@@ -17,7 +17,8 @@ def get_b16_config():
     config.transformer.attention_dropout_rate = 0.0
     config.transformer.dropout_rate = 0.0
     # config.classifier = 'token'
-    config.classifier = 'None'
+    # config.classifier = 'None'
+    config.classifier = 'token_and_recon'
     config.representation_size = None
     # config.representation_size = [2048, 1024]
     return config
@@ -39,7 +40,9 @@ def get_origin_b16_config():
     config.transformer.attention_dropout_rate = 0.0
     config.transformer.dropout_rate = 0.0
     # config.classifier = 'token'
-    config.classifier = 'None'
+    # config.classifier = 'None'
+    config.classifier = 'token_and_recon'
+
     config.representation_size = None
     # config.representation_size = [2048, 1024]
     return config

@@ -245,7 +245,7 @@ def get_data(
             data["label"], num_classes
         )  # pylint: disable=no-value-for-parameter
         
-        return {"image": im}, {"recon":im}
+        return {"image": im}, {"cls":label,"recon":im}
 
     data = data.repeat(repeats)
     if mode == "train":

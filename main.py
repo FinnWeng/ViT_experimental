@@ -166,6 +166,7 @@ if __name__ == "__main__":
 
     # initialize dataset
     dataset = "cifar10"
+    mode = "pooling"
     
     config = training_config.with_dataset(training_config.get_config(), dataset)
     ds_train_info = get_dataset_info(dataset, "train")
@@ -183,7 +184,7 @@ if __name__ == "__main__":
     print("one_train_data.shape:", one_train_data["image"].shape) # vit_model_config 
     print(one_train_data["image"].shape[1:])
 
-    mode = "origin"
+    
 
     if mode == "origin":
         vit_model_config = model_config.get_origin_b16_config()
@@ -202,28 +203,17 @@ if __name__ == "__main__":
     
 
     # this init the model and avoid manipulate weight in graph(if using resnet)
-    trial_logit = vit_model(one_train_data["image"], train = True) # (512, 10) 
+    trial_result = vit_model(one_train_data["image"], train = True) # (512, 10) 
 
-    # for varb in vit_model.trainable_variables:
-    #     if "kernel" or "bias" in varb.name:
-    #         print("varb name:", varb.name)
-    #         print("varb.shape:", varb.shape)
-    
-    # vit_varb = vit_model.trainable_variables
 
-    # vit_varb[0] = vit_varb[0]*0
-    
-    # for new_varb, origin_varib in zip(vit_varb, vit_model.trainable_variables):
-    #     origin_varib.assign(new_varb)
-
-    # print("vit_varb[0]:",vit_varb[0])
-    # print("vit_model.trainable_variables:",vit_model.trainable_variables[0])
-
-    # build model, expose this to show how to deal with dict as fit() input
     model_input = tf.keras.Input(shape=one_train_data["image"].shape[1:],name="image",dtype=tf.float32)
 
-    logit = vit_model(model_input)
-    logit = (logit+1)/2
+    model_result = vit_model(model_input)
+
+    cls_logit = model_result[0]
+
+    recon_logit = model_result[1]
+    recon_logit = (recon_logit+1)/2
 
     
     # logit = sam_model(model_input)
@@ -234,7 +224,7 @@ if __name__ == "__main__":
 
     sam_model_config = model_config.get_sam_config()
 
-    sam_model = With_SAM_Model(inputs ={"image":model_input},outputs = {"recon":logit}, dual_vector = dual_vector, rho = sam_model_config.rho,\
+    sam_model = With_SAM_Model(inputs ={"image":model_input},outputs = {"cls":cls_logit, "recon":recon_logit}, dual_vector = dual_vector, rho = sam_model_config.rho,\
         gradient_clipping = sam_model_config.gradient_clipping, l2_reg = sam_model_config.weight_decay)
 
     model = sam_model
@@ -254,7 +244,7 @@ if __name__ == "__main__":
     total_steps = 100
     warmup_steps = 1000
     base_lr = 1e-3
-    epochs = 100
+    epochs = 300
 
     # define callback 
     tensorboard_callback = tf.keras.callbacks.TensorBoard(log_dir=log_dir, histogram_freq=10, update_freq= 10)
@@ -281,8 +271,8 @@ if __name__ == "__main__":
     
     model.compile(
         optimizer=tf.keras.optimizers.Adam(learning_rate = base_lr), 
-        loss={"recon":sigmoid_xent},
-        metrics = {"recon":tf.keras.metrics.BinaryCrossentropy(from_logits = True)}
+        loss={"cls":tf.keras.losses.CategoricalCrossentropy(from_logits=True), "recon":sigmoid_xent},
+        metrics = {"cls":'accuracy', "recon":tf.keras.metrics.BinaryCrossentropy(from_logits = True)}
         )
 
     # print(model.summary())
