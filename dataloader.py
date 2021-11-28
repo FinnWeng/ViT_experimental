@@ -272,7 +272,7 @@ def get_data(
     # if num_devices is not None:
     #     data = data.map(_shard, tf.data.experimental.AUTOTUNE)
 
-    return data.prefetch(1)
+    return data.prefetch(tf.data.experimental.AUTOTUNE)
 
 
 if __name__ == "__main__":
