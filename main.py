@@ -157,7 +157,7 @@ if __name__ == "__main__":
     # tf.config.experimental_run_functions_eagerly(True)
 
     gpus = tf.config.experimental.list_physical_devices('GPU')
-    tf.config.set_visible_devices(gpus[1], 'GPU')
+    tf.config.set_visible_devices(gpus[0], 'GPU')
     if gpus:
         # Currently, memory growth needs to be the same across GPUs
         for gpu in gpus:
@@ -244,7 +244,7 @@ if __name__ == "__main__":
     total_steps = 100
     warmup_steps = 1000
     base_lr = 1e-3
-    epochs = 300
+    epochs = 5000
 
     # define callback 
     tensorboard_callback = tf.keras.callbacks.TensorBoard(log_dir=log_dir, histogram_freq=10, update_freq= 10)
