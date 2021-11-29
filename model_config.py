@@ -6,7 +6,7 @@ def get_b16_config():
     config.name = 'ViT-B_16'
     config.patches = ml_collections.ConfigDict({'size': (16, 16)})
     # config.hidden_size = 768
-    config.hidden_size = 128
+    config.hidden_size = 64
     # config.hidden_size = 256
     config.transformer = ml_collections.ConfigDict()
     # config.transformer.mlp_dim = 3072

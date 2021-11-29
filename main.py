@@ -251,7 +251,7 @@ if __name__ == "__main__":
     total_steps = 100
     warmup_steps = 1000
     base_lr = 1e-3
-    epochs = 5000
+    epochs = 300
 
     # define callback 
     tensorboard_callback = tf.keras.callbacks.TensorBoard(log_dir=log_dir, histogram_freq=10, update_freq= 10)
@@ -277,7 +277,7 @@ if __name__ == "__main__":
     #     )
     
     model.compile(
-        optimizer=tf.keras.optimizers.Adam(learning_rate = lr_schedule), 
+        optimizer=tf.keras.optimizers.Adam(learning_rate = base_lr), 
         loss={"cls":tf.keras.losses.CategoricalCrossentropy(from_logits=True), "recon":sigmoid_xent},
         metrics = {"cls":'accuracy', "recon":tf.keras.metrics.BinaryCrossentropy(from_logits = True)}
         )

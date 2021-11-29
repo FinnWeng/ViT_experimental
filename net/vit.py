@@ -234,6 +234,9 @@ class Encoder(tf.keras.Model):
         self.gcn1 = Graph_Convolution(64,use_bias = False, name = "gcn1")
         self.gcn2 = Graph_Convolution(32,use_bias = False, name = "gcn2")
         self.gcn3 = Graph_Convolution(8,use_bias = False, name = "gcn3")
+        self.gcn4 = Graph_Convolution(32,use_bias = False, name = "gcn4")
+        self.gcn5 = Graph_Convolution(64,use_bias = False, name = "gcn5")
+        self.gcn6 = Graph_Convolution(197,use_bias = False, name = "gcn6") # add one for class token
         
 
     def get(self, name, ctor, *args, **kwargs):
@@ -310,22 +313,27 @@ class Encoder(tf.keras.Model):
         '''
         print("x.shape:", x.shape)
         x = self.e_1d_blocks[0](x, deterministic=not train)
-        x = self.e_1d_blocks[1](x, deterministic=not train)
-        print("x.shape:", x.shape)
         x, new_adj1 = self.diff_pool(x, self.gcn1, normalized_adj)
         print("x.shape:", x.shape)
-        x = self.e_1d_blocks[2](x, deterministic=not train)
-        x = self.e_1d_blocks[3](x, deterministic=not train)
-        print("x.shape:", x.shape)
+        x = self.e_1d_blocks[1](x, deterministic=not train)
         x, new_adj2 = self.diff_pool(x, self.gcn2, new_adj1)
         print("x.shape:", x.shape)
-        x = self.e_1d_blocks[4](x, deterministic=not train)
-        x = self.e_1d_blocks[5](x, deterministic=not train)
-        print("x.shape:", x.shape)
+        x = self.e_1d_blocks[2](x, deterministic=not train)
         x, new_adj3 = self.diff_pool(x, self.gcn3, new_adj2)
         print("x.shape:", x.shape)
-        x = self.e_1d_blocks[6](x, deterministic=not train)
+        x = self.e_1d_blocks[3](x, deterministic=not train)
+        
+        x, new_adj4 = self.diff_pool(x, self.gcn4, new_adj3)
         print("x.shape:", x.shape)
+        x = self.e_1d_blocks[4](x, deterministic=not train)
+        x, new_adj5 = self.diff_pool(x, self.gcn5, new_adj4)
+        print("x.shape:", x.shape)
+        x = self.e_1d_blocks[5](x, deterministic=not train)
+        # print("x.shape:", x.shape)
+        x, new_adj6 = self.diff_pool(x, self.gcn6, new_adj5)
+        print("x.shape:", x.shape)
+        x = self.e_1d_blocks[6](x, deterministic=not train)
+        # print("x.shape:", x.shape)
 
         '''
         decoder
@@ -445,6 +453,7 @@ class ViT(tf.keras.Model):
         self.up1 = tf.keras.layers.UpSampling2D(size = [2,2])
 
         self.origin_transform = tf.keras.layers.Dense(1024)
+        self.hourglass_transform = tf.keras.layers.Dense(1024)
 
     def get(self, name, ctor, *args, **kwargs):
         # Create or get layer by name to avoid mentioning it in the constructor.
@@ -521,6 +530,9 @@ class ViT(tf.keras.Model):
 
         if self.mode == "origin":
             recon_x = self.origin_transform(recon_x)
+        
+        else:
+            recon_x = self.hourglass_transform(recon_x)
 
         if self.representation_size is not None:
             cls_x = self.get("pre_logits",tf.keras.layers.Dense, 
