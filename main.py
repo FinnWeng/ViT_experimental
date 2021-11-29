@@ -139,17 +139,19 @@ class Warmup_Cos_Decay_Schedule(tf.keras.optimizers.schedules.LearningRateSchedu
         '''
     
     def decayed_learning_rate(self, step):
-        step = min(step - self.warmup_steps, self.cos_decay_steps) # here i deal with problem of step that count warm up step.
+        step = tf.math.minimum(step - self.warmup_steps, self.cos_decay_steps) # here i deal with problem of step that count warm up step.
         cosine_decay = 0.5 * (1 + tf.math.cos(math.pi * step /  self.cos_decay_steps))
         decayed = (1 - self.alpha) * cosine_decay + self.alpha
         return self.cos_initial_learning_rate * decayed
 
     def __call__(self, step):
         
-        if step <= self.warmup_steps:
-            lr = self.cos_initial_learning_rate*(step/self.warmup_steps)
-        else:
-            lr = self.decayed_learning_rate(step)
+        # if step <= self.warmup_steps:
+        #     lr = self.cos_initial_learning_rate*(step/self.warmup_steps)
+        # else:
+        #     lr = self.decayed_learning_rate(step)
+        
+        lr = tf.where(step <= self.warmup_steps, self.cos_initial_learning_rate*(step/self.warmup_steps), self.decayed_learning_rate(step))
              
         return lr
 
@@ -270,7 +272,7 @@ if __name__ == "__main__":
     #     )
     
     model.compile(
-        optimizer=tf.keras.optimizers.Adam(learning_rate = base_lr), 
+        optimizer=tf.keras.optimizers.Adam(learning_rate = lr_schedule), 
         loss={"cls":tf.keras.losses.CategoricalCrossentropy(from_logits=True), "recon":sigmoid_xent},
         metrics = {"cls":'accuracy', "recon":tf.keras.metrics.BinaryCrossentropy(from_logits = True)}
         )
