@@ -127,10 +127,10 @@ class With_SAM_Model(tf.keras.Model):
 class Warmup_Cos_Decay_Schedule(tf.keras.optimizers.schedules.LearningRateSchedule):
 
     def __init__(self, cos_initial_learning_rate, warmup_steps, cos_decay_steps, alpha = 0):
-        self.cos_initial_learning_rate = cos_initial_learning_rate
+        self.cos_initial_learning_rate = tf.cast(cos_initial_learning_rate, tf.float32)
         self.warmup_steps = warmup_steps
-        self.cos_decay_steps = cos_decay_steps
-        self.alpha = alpha
+        self.cos_decay_steps = tf.cast(cos_decay_steps, tf.float32)
+        self.alpha = tf.cast(alpha, tf.float32)
 
         '''
         there's only one step
@@ -139,8 +139,9 @@ class Warmup_Cos_Decay_Schedule(tf.keras.optimizers.schedules.LearningRateSchedu
         '''
     
     def decayed_learning_rate(self, step):
-        step = tf.math.minimum(step - self.warmup_steps, self.cos_decay_steps) # here i deal with problem of step that count warm up step.
-        cosine_decay = 0.5 * (1 + tf.math.cos(math.pi * step /  self.cos_decay_steps))
+        inner_step = tf.math.minimum(tf.cast(step - self.warmup_steps,  tf.float32), self.cos_decay_steps) # here i deal with problem of step that count warm up step.
+        inner_step = tf.cast(inner_step, tf.float32)
+        cosine_decay = 0.5 * (1 + tf.math.cos(tf.constant(math.pi, dtype=tf.float32) * inner_step /  self.cos_decay_steps))
         decayed = (1 - self.alpha) * cosine_decay + self.alpha
         return self.cos_initial_learning_rate * decayed
 
@@ -151,7 +152,10 @@ class Warmup_Cos_Decay_Schedule(tf.keras.optimizers.schedules.LearningRateSchedu
         # else:
         #     lr = self.decayed_learning_rate(step)
         
-        lr = tf.where(step <= self.warmup_steps, self.cos_initial_learning_rate*(step/self.warmup_steps), self.decayed_learning_rate(step))
+        con_1 = self.cos_initial_learning_rate*(tf.cast(step, tf.float32)/tf.cast(self.warmup_steps, tf.float32))
+        con_2 = self.decayed_learning_rate(step)
+        # lr = tf.where(step <= self.warmup_steps, self.cos_initial_learning_rate*(step/self.warmup_steps), self.decayed_learning_rate(step))
+        lr = tf.where(step <= self.warmup_steps, con_1, con_2)
              
         return lr
 
@@ -239,6 +243,7 @@ if __name__ == "__main__":
     '''
     # my training config:
     steps_per_epoch = ds_train_num_examples//config.batch
+    # steps_per_epoch = 100
     validation_steps = 3
     # log_dir="./tf_log/"
     # log_dir="./tf_log/sam_vit/"
