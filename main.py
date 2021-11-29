@@ -157,7 +157,7 @@ if __name__ == "__main__":
     # tf.config.experimental_run_functions_eagerly(True)
 
     gpus = tf.config.experimental.list_physical_devices('GPU')
-    tf.config.set_visible_devices(gpus[0], 'GPU')
+    tf.config.set_visible_devices(gpus[1], 'GPU')
     if gpus:
         # Currently, memory growth needs to be the same across GPUs
         for gpu in gpus:
