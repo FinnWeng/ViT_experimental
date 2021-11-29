@@ -289,7 +289,7 @@ if __name__ == "__main__":
                 epochs=epochs, 
                 steps_per_epoch=steps_per_epoch,
                 validation_data = ds_val,
-                validation_steps=1,callbacks = callback_list).history
+                validation_steps=20,callbacks = callback_list).history
 
 
 
